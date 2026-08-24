@@ -68,6 +68,7 @@ mermaid_output_directory = "assets/mermaid"
 CODE_RUNNER_PATTERNS = {
     'javascript': r'^//\s*CODE_RUNNER:\s*(.+)$',
     'python': r'^#\s*CODE_RUNNER:\s*(.+)$',
+    'pseudocode': r'^//\s*CODE_RUNNER:\s*(.+)$',
     'java': r'^//\s*CODE_RUNNER:\s*(.+)$',
 }
 
@@ -102,6 +103,10 @@ def detect_cell_language(cell):
     # JavaScript: first line is %%js magic command
     if lines and lines[0].strip().startswith('%%js'):
         return 'javascript'
+
+    # AP CSP pseudocode: first line is %%pseudocode magic command
+    if lines and lines[0].strip().lower().startswith('%%pseudocode'):
+        return 'pseudocode'
 
     # Java: last non-whitespace line matches ClassName.main(null);
     # Find last non-empty line
