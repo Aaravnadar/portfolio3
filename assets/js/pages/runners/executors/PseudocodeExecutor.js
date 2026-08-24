@@ -317,7 +317,8 @@ export class PseudocodeExecutor {
 
     const start = Date.now();
     try {
-      const lines = interpret(src.trim());
+      const cleanSource = src.replace(/^\s*%%\s*pseudocode\s*\r?\n?/i, '').trim();
+      const lines = interpret(cleanSource);
       outputDiv.textContent = lines.length ? lines.join('\n') : '[no output]';
       if (execTimeSpan)
         execTimeSpan.textContent = `⏱ Execution time: ${Date.now() - start}ms (local)`;

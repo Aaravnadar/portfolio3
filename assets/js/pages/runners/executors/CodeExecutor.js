@@ -10,7 +10,8 @@ export class CodeExecutor {
   }
 
   async run() {
-    const code = this.editor?.getValue?.() || '';
+    const rawCode = this.editor?.getValue?.() || '';
+    const code = rawCode.replace(/^\s*%%\s*js\s*\r?\n?/i, '');
     const lang = this.languageSelect?.value || 'python';
     const outputDiv = this.outputElement;
     const execTimeSpan = this.execTimeElement;
