@@ -83,6 +83,11 @@ GAME_RUNNER_PATTERN = r'^//\s*GAME_RUNNER:\s*(.+)$'
 ### Section for Core Helper Functions ###
 #########################################
 
+def get_cell_source(cell) -> str:
+    """Return notebook source as text for both string and JSON-array cells."""
+    source = cell.get('source', '')
+    return ''.join(source) if isinstance(source, list) else source
+
 def ensure_directory_exists(path):
     """Ensure the destination directory exists before writing output files."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -97,7 +102,7 @@ def generate_runner_id(permalink, index):
 
 def detect_cell_language(cell):
     """Detect the programming language of a code cell"""
-    source = cell.get('source', '')
+    source = get_cell_source(cell)
     lines = source.split('\n')
 
     # JavaScript: first line is %%js magic command
@@ -218,7 +223,8 @@ class CodeRunner:
     def from_cell(cls, cell, permalink: str, runner_index: int) -> Optional["CodeRunner"]:
         """Build a CodeRunner instance when the cell includes a CODE_RUNNER marker."""
         language = detect_cell_language(cell)
-        parsed = cls.extract_challenge_and_options(cell.source, language)
+        source = get_cell_source(cell)
+        parsed = cls.extract_challenge_and_options(source, language)
         if not parsed:
             return None
 
@@ -228,7 +234,7 @@ class CodeRunner:
             challenge=challenge,
             language=language,
             runner_id=generate_runner_id(permalink, runner_index),
-            code=cls.clean_code(cell.source, language),
+            code=cls.clean_code(source, language),
             options=options,
             custom_cell_id=get_custom_cell_id(cell),
         )
@@ -370,7 +376,8 @@ class UiRunner:
     @classmethod
     def from_cell(cls, cell, permalink: str, runner_index: int) -> Optional["UiRunner"]:
         """Build a UiRunner instance when the cell includes a UI_RUNNER directive."""
-        parsed = cls.extract_description_and_options(cell.source)
+        source = get_cell_source(cell)
+        parsed = cls.extract_description_and_options(source)
         if not parsed:
             return None
 
@@ -378,7 +385,7 @@ class UiRunner:
 
         namespace_ids = bool(options.get('namespace_ids', False))
         html_content, script_content = cls.clean_html_and_script(
-            cell.source,
+            source,
             runner_index,
             namespace_ids=namespace_ids,
         )
@@ -427,7 +434,7 @@ class UiRunner:
         ui_runner_cells = [c for c in notebook.cells if 'ui_runner' in c.get('metadata', {})]
         ui_runner_ids = []
         for ui_cell in ui_runner_cells:
-            source = ui_cell.get('source', '')
+            source = get_cell_source(ui_cell)
             ids = re.findall(r'id="([^"]+)"', source)
             ui_runner_ids.append(ids)
         return ui_runner_cells, ui_runner_ids
@@ -493,7 +500,7 @@ class GameRunner:
     @classmethod
     def from_cell(cls, cell, permalink: str, runner_index: int) -> Optional["GameRunner"]:
         """Build a GameRunner instance when the cell is a %%js GAME_RUNNER cell."""
-        source = cell.get('source', '')
+        source = get_cell_source(cell)
         if not source.strip().startswith('%%js'):
             return None
 
@@ -607,8 +614,9 @@ class MermaidGraph:
     def process_cells(self, notebook) -> None:
         """Replace Mermaid markdown cells with image markdown references."""
         for cell in notebook.cells:
-            if cell.cell_type == "markdown" and cell.source.startswith("~~~mermaid"):
-                mermaid_code = self.extract_code(cell.source)
+            source = get_cell_source(cell)
+            if cell.cell_type == "markdown" and source.startswith("~~~mermaid"):
+                mermaid_code = self.extract_code(source)
                 image_path = self.convert_to_image(mermaid_code)
                 if image_path:
                     cell.source = f"![Mermaid Diagram](../../../../{image_path})"
@@ -664,7 +672,7 @@ def fix_js_code_blocks(markdown):
 def classify_custom_cell_type(cell) -> Optional[str]:
     """Classify a notebook cell as code/ui/game custom type, or None."""
     if cell.cell_type == 'code':
-        source = cell.get('source', '')
+        source = get_cell_source(cell)
         if source.strip().startswith('%%js') and GameRunner.extract_challenge_and_options(source):
             return 'game_runner'
 
@@ -675,7 +683,7 @@ def classify_custom_cell_type(cell) -> Optional[str]:
         if source.strip().startswith('%%html') and UiRunner.extract_description(source):
             return 'ui_runner'
 
-    if cell.cell_type == 'raw' and UiRunner.extract_description(cell.get('source', '')):
+    if cell.cell_type == 'raw' and UiRunner.extract_description(get_cell_source(cell)):
         return 'ui_runner'
 
     return None
@@ -743,7 +751,8 @@ def process_ui_runner_cells(notebook, permalink):
     processed_cells = []
     
     for cell in notebook.cells:
-        if cell.cell_type == 'raw' or (cell.cell_type == 'code' and cell.source.strip().startswith('%%html')):
+        source = get_cell_source(cell)
+        if cell.cell_type == 'raw' or (cell.cell_type == 'code' and source.strip().startswith('%%html')):
             runner = UiRunner.from_cell(cell, permalink, runner_index)
 
             if runner:
