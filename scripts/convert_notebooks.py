@@ -8,7 +8,7 @@ import sys
 import subprocess
 from hashlib import sha256
 import concurrent.futures, traceback, re
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Any, Optional
 
 if __name__ == "__main__":
@@ -142,6 +142,7 @@ class CodeRunner:
     language: str
     runner_id: str
     code: str
+    code_variants: dict[str, str] = field(default_factory=dict)
     options: dict[str, Any]
     custom_cell_id: str
 
@@ -235,6 +236,7 @@ class CodeRunner:
             language=language,
             runner_id=generate_runner_id(permalink, runner_index),
             code=cls.clean_code(source, language),
+            code_variants={},
             options=options,
             custom_cell_id=get_custom_cell_id(cell),
         )
@@ -251,12 +253,14 @@ class CodeRunner:
             language=metadata['language'],
             runner_id=metadata['runner_id'],
             code=metadata['code'],
+            code_variants=metadata.get('code_variants', {}),
             options=metadata.get('options', {}),
             custom_cell_id=metadata.get('custom_cell_id', ''),
         )
 
     def liquid_lines(self, code_fence_lines: list[str], code_runner_count: int) -> list[str]:
         """Render Jekyll Liquid captures/includes for embedding the code runner widget."""
+        variants_json = json.dumps(self.code_variants or {self.language: self.code}, ensure_ascii=False)
         return [
             '',
             '{% capture challenge' + str(code_runner_count) + ' %}',
@@ -271,11 +275,16 @@ class CodeRunner:
             *code_fence_lines,
             '{% endcapture %}',
             '',
+            '{% capture codeVariants' + str(code_runner_count) + ' %}',
+            variants_json,
+            '{% endcapture %}',
+            '',
             '{% include runners/code.html',
             '   runner_id="' + self.runner_id + '"',
             '   language="' + self.language + '"',
             '   challenge=challenge' + str(code_runner_count),
             '   code=code' + str(code_runner_count),
+            '   code_variants=codeVariants' + str(code_runner_count),
             '   source=source' + str(code_runner_count),
             '%}',
             '',
@@ -725,14 +734,23 @@ def process_code_runner_cells(notebook, permalink):
     """Process notebook cells and add code-runner metadata"""
     runner_index = 0
     processed_cells = []
+    runner_cells: list[tuple[Any, CodeRunner]] = []
+    variant_groups: list[dict[str, Any]] = []
     
     for cell in notebook.cells:
         if cell.cell_type == 'code':
             runner = CodeRunner.from_cell(cell, permalink, runner_index)
 
             if runner:
-                # Store metadata for later use
-                cell['metadata']['code_runner'] = runner.to_metadata()
+                if variant_groups and variant_groups[-1]['challenge'] == runner.challenge and runner.language not in variant_groups[-1]['variants']:
+                    group = variant_groups[-1]
+                else:
+                    group = {'challenge': runner.challenge, 'variants': {}}
+                    variant_groups.append(group)
+
+                group['variants'][runner.language] = runner.code
+                runner.code_variants = group['variants']
+                runner_cells.append((cell, runner))
                 runner_index += 1
                 
                 # Clear outputs for cells with code-runner (outputs are redundant)
@@ -740,6 +758,9 @@ def process_code_runner_cells(notebook, permalink):
                 cell['execution_count'] = None
         
         processed_cells.append(cell)
+
+    for cell, runner in runner_cells:
+        cell['metadata']['code_runner'] = runner.to_metadata()
     
     notebook.cells = processed_cells
     return notebook

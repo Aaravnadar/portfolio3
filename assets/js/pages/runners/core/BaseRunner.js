@@ -136,8 +136,9 @@ export class BaseRunner {
     const clearBtn = this.container.querySelector('.clearStorageBtn');
     if (clearBtn) {
       clearBtn.addEventListener('click', () => {
+        const resolvedResetValue = typeof resetValue === 'function' ? resetValue() : resetValue;
         this.clearStorage();
-        this.setValue(resetValue || '');
+        this.setValue(resolvedResetValue || '');
         if (typeof onClear === 'function') {
           onClear();
         }

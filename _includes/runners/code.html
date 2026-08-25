@@ -3,6 +3,7 @@
   id="runner-{{ include.runner_id }}"
   data-runner-id="{{ include.runner_id }}"
   data-default-code="{{ include.code | jsonify | escape }}"
+  data-code-variants="{{ include.code_variants | default: '{}' | strip | escape }}"
   data-storage-key="{{ page.permalink | replace: '/', '_' }}_{{ include.runner_id }}">
   {% capture code_runner_title %}Code Runner Challenge {% if include.challenge_number %}#{{ include.challenge_number }}{% endif %}{% endcapture %}
   {% include runners/fragments/challenge-box.html title=code_runner_title challenge=include.challenge %}
@@ -116,12 +117,36 @@ import { pythonURI, javaURI, fetchOptions } from '{{site.baseurl}}/assets/js/api
   
   const initialLang = "{{ include.language }}";
   const defaultCode = JSON.parse(container.dataset.defaultCode || "\"\"");
+  const parsedVariants = JSON.parse(container.dataset.codeVariants || "{}");
+  const codeVariants = (parsedVariants && typeof parsedVariants === 'object') ? parsedVariants : {};
+  if (initialLang && !codeVariants[initialLang]) {
+    codeVariants[initialLang] = defaultCode;
+  }
   const editorHeight = "{{ include.height }}";
-  const storageKey = container.dataset.storageKey;
-  const runner = new BaseRunner(container, { storageKey });
+  const storageKeyBase = container.dataset.storageKey;
+  const storageKeyForLanguage = (lang) => storageKeyBase ? `${storageKeyBase}__${lang}` : '';
+  const getDefaultForLanguage = (lang) => codeVariants[lang] || defaultCode || "print('Hello, world!')";
+  const activeLang = initialLang || "python";
+  let currentLanguage = activeLang;
+  const runner = new BaseRunner(container, { storageKey: storageKeyForLanguage(activeLang) });
+
+  const readStoredForLanguage = (lang, fallback) => {
+    const key = storageKeyForLanguage(lang);
+    if (!key) return fallback;
+    const stored = localStorage.getItem(key);
+    return stored !== null ? stored : fallback;
+  };
+
+  const syncRunnerLanguageStorage = (lang) => {
+    const key = storageKeyForLanguage(lang);
+    runner.storageKey = key;
+    if (runner.storage) {
+      runner.storage.storageKey = key;
+    }
+  };
 
   const editor = runner.initializeEditor({
-    defaultCode,
+    defaultCode: readStoredForLanguage(activeLang, getDefaultForLanguage(activeLang)),
     editorHeight,
     fallbackCode: "print('Hello, world!')",
     codeMirrorOptions: {
@@ -159,7 +184,7 @@ import { pythonURI, javaURI, fetchOptions } from '{{site.baseurl}}/assets/js/api
   }
 
   runner.bindEditorButtons({
-    resetValue: defaultCode || "print('Hello, world!')",
+    resetValue: () => getDefaultForLanguage(langSelect.value),
     onClear: () => {
       outputDiv.textContent = 'Storage cleared. Code reset to default.';
       execTimeSpan.textContent = '';
@@ -192,6 +217,14 @@ import { pythonURI, javaURI, fetchOptions } from '{{site.baseurl}}/assets/js/api
   // Language switcher
   langSelect.addEventListener("change", () => {
     const lang = langSelect.value;
+    const previousLang = currentLanguage;
+    if (previousLang) {
+      const previousKey = storageKeyForLanguage(previousLang);
+      if (previousKey) {
+        localStorage.setItem(previousKey, editor.getValue());
+      }
+    }
+
     if (lang === "python") {
       editor.setOption("mode", "python");
     } else if (lang === "java") {
@@ -201,7 +234,14 @@ import { pythonURI, javaURI, fetchOptions } from '{{site.baseurl}}/assets/js/api
     } else if (lang === "pseudocode") {
       editor.setOption("mode", "pseudocode");
     }
+
+    syncRunnerLanguageStorage(lang);
+    const nextCode = readStoredForLanguage(lang, getDefaultForLanguage(lang));
+    runner.setValue(nextCode);
+    currentLanguage = lang;
   });
+
+  syncRunnerLanguageStorage(activeLang);
 
   codeExecutor.bindCopyOutput(container.querySelector('.copyOutputBtn'));
 
