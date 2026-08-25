@@ -143,8 +143,8 @@ class CodeRunner:
     runner_id: str
     code: str
     code_variants: dict[str, str] = field(default_factory=dict)
-    options: dict[str, Any]
-    custom_cell_id: str
+    options: dict[str, Any] = field(default_factory=dict)
+    custom_cell_id: str = ''
 
     @staticmethod
     def extract_challenge_and_options(cell_source: str, language: str) -> Optional[tuple[str, dict[str, Any]]]:
